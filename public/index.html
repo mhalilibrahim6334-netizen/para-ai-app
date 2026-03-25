@@ -101,9 +101,6 @@ button {
 
     <button class="btn-main" onclick="getTask()">Görev Al</button>
     <button class="btn-secondary" onclick="checkStatus()">Durumu Göster</button>
-    <button class="btn-secondary" onclick="setPremium(true)">Premium Aç</button>
-    <button class="btn-secondary" onclick="setPremium(false)">Premium Kapat</button>
-    <button class="btn-secondary" onclick="resetCount()">Kullanýmý Sýfýrla</button>
     <button class="btn-secondary" onclick="logoutUser()">Çýkýþ Yap</button>
 
     <label>Hesap Durumu</label>
@@ -118,6 +115,33 @@ button {
 
 <script>
 var currentUser = "";
+var currentToken = localStorage.getItem("token") || "";
+
+function saveSession(token) {
+  currentToken = token;
+  localStorage.setItem("token", token);
+}
+
+function clearSession() {
+  currentToken = "";
+  currentUser = "";
+  localStorage.removeItem("token");
+}
+
+function showApp(username) {
+  currentUser = username;
+  document.getElementById("authArea").className = "hidden";
+  document.getElementById("appArea").className = "";
+  document.getElementById("welcomeBox").innerText = "Hos geldin, " + currentUser;
+  checkStatus();
+}
+
+function showLogin() {
+  document.getElementById("authArea").className = "";
+  document.getElementById("appArea").className = "hidden";
+  document.getElementById("result").innerText = "Görev burada görünecek";
+  document.getElementById("status").innerText = "Durum burada görünecek";
+}
 
 function registerUser() {
   var username = document.getElementById("username").value;
@@ -163,23 +187,63 @@ function loginUser() {
       return;
     }
 
-    currentUser = d.user.username;
-    document.getElementById("authArea").className = "hidden";
-    document.getElementById("appArea").className = "";
-    document.getElementById("welcomeBox").innerText = "Hos geldin, " + currentUser;
-    checkStatus();
+    saveSession(d.token);
+    showApp(d.user.username);
   })
   .catch(function(error) {
     alert("Hata oldu: " + error);
   });
 }
 
+function tryAutoLogin() {
+  if (!currentToken) {
+    showLogin();
+    return;
+  }
+
+  fetch("/me", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      token: currentToken
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (!d.success) {
+      clearSession();
+      showLogin();
+      return;
+    }
+
+    showApp(d.user.username);
+  })
+  .catch(function() {
+    clearSession();
+    showLogin();
+  });
+}
+
 function logoutUser() {
-  currentUser = "";
-  document.getElementById("authArea").className = "";
-  document.getElementById("appArea").className = "hidden";
-  document.getElementById("result").innerText = "Görev burada görünecek";
-  document.getElementById("status").innerText = "Durum burada görünecek";
+  fetch("/logout", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      token: currentToken
+    })
+  })
+  .then(function() {
+    clearSession();
+    showLogin();
+  })
+  .catch(function() {
+    clearSession();
+    showLogin();
+  });
 }
 
 function checkStatus() {
@@ -199,41 +263,6 @@ function checkStatus() {
     });
 }
 
-function setPremium(value) {
-  fetch("/set-premium", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      username: currentUser,
-      premium: value
-    })
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(d) {
-    document.getElementById("result").innerText = d.message;
-    checkStatus();
-  });
-}
-
-function resetCount() {
-  fetch("/reset-count", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      username: currentUser
-    })
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(d) {
-    document.getElementById("result").innerText = d.message;
-    checkStatus();
-  });
-}
-
 function getTask() {
   var goal = document.getElementById("goal").value;
   var category = document.getElementById("category").value;
@@ -246,7 +275,7 @@ function getTask() {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      username: currentUser,
+      token: currentToken,
       goal: goal,
       category: category
     })
@@ -260,6 +289,8 @@ function getTask() {
     document.getElementById("result").innerText = "Hata oldu: " + error;
   });
 }
+
+tryAutoLogin();
 </script>
 
 </body>
