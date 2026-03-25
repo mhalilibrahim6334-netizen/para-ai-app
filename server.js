@@ -21,6 +21,36 @@ function hashPassword(password) {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
+function createToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+async function getSessionUser(token) {
+  if (!token) return null;
+
+  const sessionResult = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("token", token)
+    .maybeSingle();
+
+  if (sessionResult.error || !sessionResult.data) {
+    return null;
+  }
+
+  const userResult = await supabase
+    .from("users")
+    .select("*")
+    .eq("username", sessionResult.data.username)
+    .maybeSingle();
+
+  if (userResult.error || !userResult.data) {
+    return null;
+  }
+
+  return userResult.data;
+}
+
 app.get("/", function (req, res) {
   res.sendFile(__dirname + "/public/index.html");
 });
@@ -31,7 +61,10 @@ app.post("/register", async function (req, res) {
     var password = (req.body.password || "").trim();
 
     if (!username || !password) {
-      return res.json({ success: false, message: "Kullanici adi ve sifre zorunlu." });
+      return res.json({
+        success: false,
+        message: "Kullanici adi ve sifre zorunlu."
+      });
     }
 
     var hashed = hashPassword(password);
@@ -43,25 +76,39 @@ app.post("/register", async function (req, res) {
       .maybeSingle();
 
     if (check.data) {
-      return res.json({ success: false, message: "Bu kullanici adi zaten var." });
+      return res.json({
+        success: false,
+        message: "Bu kullanici adi zaten var."
+      });
     }
 
-    const result = await supabase.from("users").insert([
-      {
-        username: username,
-        password: hashed,
-        premium: false,
-        dailycount: 0
-      }
-    ]);
+    const insertResult = await supabase
+      .from("users")
+      .insert([
+        {
+          username: username,
+          password: hashed,
+          premium: false,
+          dailycount: 0
+        }
+      ]);
 
-    if (result.error) {
-      return res.json({ success: false, message: "Kayit hatasi: " + result.error.message });
+    if (insertResult.error) {
+      return res.json({
+        success: false,
+        message: "Kayit hatasi: " + insertResult.error.message
+      });
     }
 
-    res.json({ success: true, message: "Kayit basarili." });
+    return res.json({
+      success: true,
+      message: "Kayit basarili."
+    });
   } catch (err) {
-    res.json({ success: false, message: "Hata: " + err.message });
+    return res.json({
+      success: false,
+      message: "Hata: " + err.message
+    });
   }
 });
 
@@ -69,6 +116,14 @@ app.post("/login", async function (req, res) {
   try {
     var username = (req.body.username || "").trim();
     var password = (req.body.password || "").trim();
+
+    if (!username || !password) {
+      return res.json({
+        success: false,
+        message: "Kullanici adi ve sifre zorunlu."
+      });
+    }
+
     var hashed = hashPassword(password);
 
     const result = await supabase
@@ -79,16 +134,41 @@ app.post("/login", async function (req, res) {
       .maybeSingle();
 
     if (result.error) {
-      return res.json({ success: false, message: "Giris hatasi: " + result.error.message });
+      return res.json({
+        success: false,
+        message: "Giris hatasi: " + result.error.message
+      });
     }
 
     if (!result.data) {
-      return res.json({ success: false, message: "Kullanici adi veya sifre yanlis." });
+      return res.json({
+        success: false,
+        message: "Kullanici adi veya sifre yanlis."
+      });
     }
 
-    res.json({
+    var token = createToken();
+
+    const sessionInsert = await supabase
+      .from("sessions")
+      .insert([
+        {
+          username: username,
+          token: token
+        }
+      ]);
+
+    if (sessionInsert.error) {
+      return res.json({
+        success: false,
+        message: "Session kaydedilemedi: " + sessionInsert.error.message
+      });
+    }
+
+    return res.json({
       success: true,
       message: "Giris basarili.",
+      token: token,
       user: {
         username: result.data.username,
         premium: !!result.data.premium,
@@ -96,7 +176,73 @@ app.post("/login", async function (req, res) {
       }
     });
   } catch (err) {
-    res.json({ success: false, message: "Hata: " + err.message });
+    return res.json({
+      success: false,
+      message: "Hata: " + err.message
+    });
+  }
+});
+
+app.post("/logout", async function (req, res) {
+  try {
+    var token = (req.body.token || "").trim();
+
+    if (!token) {
+      return res.json({
+        success: false,
+        message: "Token yok."
+      });
+    }
+
+    const delResult = await supabase
+      .from("sessions")
+      .delete()
+      .eq("token", token);
+
+    if (delResult.error) {
+      return res.json({
+        success: false,
+        message: "Cikis hatasi: " + delResult.error.message
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Cikis yapildi."
+    });
+  } catch (err) {
+    return res.json({
+      success: false,
+      message: "Hata: " + err.message
+    });
+  }
+});
+
+app.post("/me", async function (req, res) {
+  try {
+    var token = (req.body.token || "").trim();
+    var user = await getSessionUser(token);
+
+    if (!user) {
+      return res.json({
+        success: false,
+        message: "Oturum gecersiz."
+      });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        username: user.username,
+        premium: !!user.premium,
+        dailyCount: user.dailycount
+      }
+    });
+  } catch (err) {
+    return res.json({
+      success: false,
+      message: "Hata: " + err.message
+    });
   }
 });
 
@@ -111,10 +257,13 @@ app.get("/status", async function (req, res) {
       .maybeSingle();
 
     if (result.error || !result.data) {
-      return res.json({ success: false, message: "Kullanici bulunamadi." });
+      return res.json({
+        success: false,
+        message: "Kullanici bulunamadi."
+      });
     }
 
-    res.json({
+    return res.json({
       success: true,
       username: result.data.username,
       premium: !!result.data.premium,
@@ -122,7 +271,10 @@ app.get("/status", async function (req, res) {
       remainingFree: result.data.premium ? "sinirsiz" : Math.max(0, 1 - result.data.dailycount)
     });
   } catch (err) {
-    res.json({ success: false, message: "Hata: " + err.message });
+    return res.json({
+      success: false,
+      message: "Hata: " + err.message
+    });
   }
 });
 
@@ -137,15 +289,21 @@ app.post("/set-premium", async function (req, res) {
       .eq("username", username);
 
     if (result.error) {
-      return res.json({ success: false, message: "Premium guncelleme hatasi." });
+      return res.json({
+        success: false,
+        message: "Premium guncelleme hatasi: " + result.error.message
+      });
     }
 
-    res.json({
+    return res.json({
       success: true,
-      message: premium ? "Premium aktif edildi" : "Premium kapatildi"
+      message: premium ? "Premium aktif edildi." : "Premium kapatildi."
     });
   } catch (err) {
-    res.json({ success: false, message: "Hata: " + err.message });
+    return res.json({
+      success: false,
+      message: "Hata: " + err.message
+    });
   }
 });
 
@@ -159,32 +317,45 @@ app.post("/reset-count", async function (req, res) {
       .eq("username", username);
 
     if (result.error) {
-      return res.json({ success: false, message: "Sifirlama hatasi." });
+      return res.json({
+        success: false,
+        message: "Sifirlama hatasi: " + result.error.message
+      });
     }
 
-    res.json({ success: true, message: "Gunluk kullanim sifirlandi." });
+    return res.json({
+      success: true,
+      message: "Gunluk kullanim sifirlandi."
+    });
   } catch (err) {
-    res.json({ success: false, message: "Hata: " + err.message });
+    return res.json({
+      success: false,
+      message: "Hata: " + err.message
+    });
   }
 });
 
 app.post("/task", async function (req, res) {
   try {
-    var username = (req.body.username || "").trim();
-    var goal = req.body.goal || "";
-    var category = req.body.category || "genel";
+    var token = (req.body.token || "").trim();
+    var goal = (req.body.goal || "").trim();
+    var category = (req.body.category || "genel").trim();
 
-    const userResult = await supabase
-      .from("users")
-      .select("*")
-      .eq("username", username)
-      .maybeSingle();
+    var user = await getSessionUser(token);
 
-    if (userResult.error || !userResult.data) {
-      return res.json({ success: false, task: "Kullanici bulunamadi." });
+    if (!user) {
+      return res.json({
+        success: false,
+        task: "Kullanici bulunamadi. Tekrar giris yap."
+      });
     }
 
-    var user = userResult.data;
+    if (!goal) {
+      return res.json({
+        success: false,
+        task: "Lutfen bir hedef yaz."
+      });
+    }
 
     if (!user.premium && user.dailycount >= 1) {
       return res.json({
@@ -235,29 +406,32 @@ app.post("/task", async function (req, res) {
     const updateResult = await supabase
       .from("users")
       .update({ dailycount: user.dailycount + 1 })
-      .eq("username", username);
+      .eq("username", user.username);
 
     if (updateResult.error) {
-      return res.json({ success: false, task: "Kullanim guncellenemedi." });
+      return res.json({
+        success: false,
+        task: "Kullanim guncellenemedi: " + updateResult.error.message
+      });
     }
 
-    res.json({
+    return res.json({
       success: true,
       locked: false,
       task: text
     });
   } catch (err) {
     if (err.response && err.response.data) {
-      res.json({
+      return res.json({
         success: false,
         task: "API hatasi: " + JSON.stringify(err.response.data)
       });
-    } else {
-      res.json({
-        success: false,
-        task: "Hata: " + err.message
-      });
     }
+
+    return res.json({
+      success: false,
+      task: "Hata: " + err.message
+    });
   }
 });
 

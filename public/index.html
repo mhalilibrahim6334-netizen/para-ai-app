@@ -101,7 +101,7 @@ button {
 
     <button class="btn-main" onclick="getTask()">Görev Al</button>
     <button class="btn-secondary" onclick="checkStatus()">Durumu Göster</button>
-    <button class="btn-secondary" onclick="logoutUser()">Çýkýþ Yap</button>
+    <button class="btn-secondary" onclick="logoutUser()">Cikis Yap</button>
 
     <label>Hesap Durumu</label>
     <div class="box" id="status">Durum burada görünecek</div>
@@ -144,8 +144,8 @@ function showLogin() {
 }
 
 function registerUser() {
-  var username = document.getElementById("username").value;
-  var password = document.getElementById("password").value;
+  var username = document.getElementById("username").value.trim();
+  var password = document.getElementById("password").value.trim();
 
   fetch("/register", {
     method: "POST",
@@ -167,8 +167,8 @@ function registerUser() {
 }
 
 function loginUser() {
-  var username = document.getElementById("username").value;
-  var password = document.getElementById("password").value;
+  var username = document.getElementById("username").value.trim();
+  var password = document.getElementById("password").value.trim();
 
   fetch("/login", {
     method: "POST",
@@ -264,7 +264,7 @@ function checkStatus() {
 }
 
 function getTask() {
-  var goal = document.getElementById("goal").value;
+  var goal = document.getElementById("goal").value.trim();
   var category = document.getElementById("category").value;
 
   document.getElementById("result").innerText = "Görev hazýrlanýyor...";
@@ -282,7 +282,7 @@ function getTask() {
   })
   .then(function(r) { return r.json(); })
   .then(function(d) {
-    document.getElementById("result").innerText = d.task;
+    document.getElementById("result").innerText = d.task || d.message || "Bir hata oldu.";
     checkStatus();
   })
   .catch(function(error) {
