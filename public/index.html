@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Para AI</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f3f4f6;
+  margin: 0;
+  padding: 0;
+}
+.container {
+  width: 460px;
+  margin: 30px auto;
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+h2 {
+  text-align: center;
+  margin-top: 0;
+}
+label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+input, select, button {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+button {
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+.btn-main {
+  background: #111827;
+  color: white;
+}
+.btn-secondary {
+  background: #e5e7eb;
+  color: black;
+}
+.box {
+  white-space: pre-wrap;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 10px;
+  min-height: 50px;
+}
+.hidden {
+  display: none;
+}
+.small {
+  text-align: center;
+  color: #6b7280;
+  font-size: 12px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Para AI</h2>
+
+  <div id="authArea">
+    <label>Kullanýcý Adý</label>
+    <input id="username" placeholder="kullanici adi">
+
+    <label>Þifre</label>
+    <input id="password" type="password" placeholder="sifre">
+
+    <button class="btn-main" onclick="registerUser()">Kayýt Ol</button>
+    <button class="btn-secondary" onclick="loginUser()">Giriþ Yap</button>
+  </div>
+
+  <div id="appArea" class="hidden">
+    <div class="box" id="welcomeBox">Hos geldin</div>
+
+    <label>Hedef</label>
+    <input id="goal" placeholder="Ornek: Bugun 500 TL kazanmak istiyorum">
+
+    <label>Kategori</label>
+    <select id="category">
+      <option value="freelance">Freelance</option>
+      <option value="satis">Satis</option>
+      <option value="online">Online</option>
+      <option value="yerel">Yerel</option>
+      <option value="sosyal">Sosyal medya</option>
+    </select>
+
+    <button class="btn-main" onclick="getTask()">Görev Al</button>
+    <button class="btn-secondary" onclick="checkStatus()">Durumu Göster</button>
+    <button class="btn-secondary" onclick="setPremium(true)">Premium Aç</button>
+    <button class="btn-secondary" onclick="setPremium(false)">Premium Kapat</button>
+    <button class="btn-secondary" onclick="resetCount()">Kullanýmý Sýfýrla</button>
+    <button class="btn-secondary" onclick="logoutUser()">Çýkýþ Yap</button>
+
+    <label>Hesap Durumu</label>
+    <div class="box" id="status">Durum burada görünecek</div>
+
+    <label>Sonuç</label>
+    <div class="box" id="result">Görev burada görünecek</div>
+
+    <div class="small">Günde 1 ücretsiz görev. Sýnýrsýz kullaným için premium.</div>
+  </div>
+</div>
+
+<script>
+var currentUser = "";
+
+function registerUser() {
+  var username = document.getElementById("username").value;
+  var password = document.getElementById("password").value;
+
+  fetch("/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username: username,
+      password: password
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    alert(d.message);
+  })
+  .catch(function(error) {
+    alert("Hata oldu: " + error);
+  });
+}
+
+function loginUser() {
+  var username = document.getElementById("username").value;
+  var password = document.getElementById("password").value;
+
+  fetch("/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username: username,
+      password: password
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (!d.success) {
+      alert(d.message);
+      return;
+    }
+
+    currentUser = d.user.username;
+    document.getElementById("authArea").className = "hidden";
+    document.getElementById("appArea").className = "";
+    document.getElementById("welcomeBox").innerText = "Hos geldin, " + currentUser;
+    checkStatus();
+  })
+  .catch(function(error) {
+    alert("Hata oldu: " + error);
+  });
+}
+
+function logoutUser() {
+  currentUser = "";
+  document.getElementById("authArea").className = "";
+  document.getElementById("appArea").className = "hidden";
+  document.getElementById("result").innerText = "Görev burada görünecek";
+  document.getElementById("status").innerText = "Durum burada görünecek";
+}
+
+function checkStatus() {
+  fetch("/status?username=" + encodeURIComponent(currentUser))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.success) {
+        document.getElementById("status").innerText = d.message;
+        return;
+      }
+
+      document.getElementById("status").innerText =
+        "KULLANICI: " + d.username + "\n" +
+        "PREMIUM: " + d.premium + "\n" +
+        "BUGUN KULLANIM: " + d.dailyCount + "\n" +
+        "KALAN UCRETSIZ HAK: " + d.remainingFree;
+    });
+}
+
+function setPremium(value) {
+  fetch("/set-premium", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username: currentUser,
+      premium: value
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    document.getElementById("result").innerText = d.message;
+    checkStatus();
+  });
+}
+
+function resetCount() {
+  fetch("/reset-count", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username: currentUser
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    document.getElementById("result").innerText = d.message;
+    checkStatus();
+  });
+}
+
+function getTask() {
+  var goal = document.getElementById("goal").value;
+  var category = document.getElementById("category").value;
+
+  document.getElementById("result").innerText = "Görev hazýrlanýyor...";
+
+  fetch("/task", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username: currentUser,
+      goal: goal,
+      category: category
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    document.getElementById("result").innerText = d.task;
+    checkStatus();
+  })
+  .catch(function(error) {
+    document.getElementById("result").innerText = "Hata oldu: " + error;
+  });
+}
+</script>
+
+</body>
+</html>
